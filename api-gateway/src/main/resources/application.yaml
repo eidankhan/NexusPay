@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:           # <-- NEW IN SPRING BOOT 4
+        webflux:        # <-- NEW IN SPRING BOOT 4
+          routes:
+            # Authentication Routing
+            - id: identity-service
+              uri: lb://identity-service
+              predicates:
+                - Path=/api/auth/**
+          # Payment Routing
+            - id: payment-service
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/payments/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/

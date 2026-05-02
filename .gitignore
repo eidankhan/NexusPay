@@ -1,0 +1,58 @@
+# =========================
+# 1. MAVEN & COMPILED CODE
+# =========================
+# The **/ ensures it ignores the target folder in EVERY microservice
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven specific files
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# =========================
+# 2. IDE CONFIGURATIONS
+# =========================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse / VS Code (Just in case another dev uses them)
+.settings/
+.project
+.classpath
+.vscode/
+
+# =========================
+# 3. OPERATING SYSTEM
+# =========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================
+# 4. LOGS & DATABASES
+# =========================
+*.log
+*.sqlite

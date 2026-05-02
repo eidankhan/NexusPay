@@ -1,0 +1,18 @@
+server:
+  port: 8888  # 8888 is the global standard port for Config Servers
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native  # 'native' means we will read files from our local folder, not from GitHub (to keep it simple for now!)
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config/
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/ # Tells this app where the Phonebook is

@@ -1,0 +1,25 @@
+services:
+  # Our main Database
+  nexus-db:
+    image: postgres:16
+    container_name: nexus-db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: nexuspay
+    ports:
+      - "5432:5432"
+
+  # Our fast Cache for "Bouncer" (Gateway) rules
+  nexus-redis:
+    image: redis:7
+    container_name: nexus-redis
+    ports:
+      - "6379:6379"
+
+  # A tool to visualize our "Phonebook" later
+  nexus-zipkin:
+    image: openzipkin/zipkin
+    container_name: nexus-zipkin
+    ports:
+      - "9411:9411"
