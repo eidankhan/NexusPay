@@ -6,9 +6,16 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/payments")
 public class PaymentController {
 
+    private final PaymentProcessorService paymentService;
+
+    // Spring hands the Controller the Service automatically
+    public PaymentController(PaymentProcessorService paymentService) {
+        this.paymentService = paymentService;
+    }
+
     @PostMapping("/charge")
-    public String chargeCard() {
-        // Later, we will write the code to save to PostgreSQL and call Stripe here!
-        return "SUCCESS! The Payment Service received your request.";
+    public String chargeCard(@RequestBody PaymentRequest request) {
+        // Hand the JSON request to our Service logic
+        return paymentService.processPayment(request);
     }
 }

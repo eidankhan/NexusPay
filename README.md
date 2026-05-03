@@ -72,10 +72,9 @@
 * **The Gateway Routing Test:** When a request hits the Gateway (`:8080/api/auth/**`), the Gateway looks up the IP in Eureka and forwards it to Port `8081` silently. The user never knows Port `8081` exists.
 
 ---
-
 ## Phase 3: The Money Flow
 
-### 1. Payment Service Foundation
+### 1. Payment Service Foundation & Database
 **The Goal:** Create the core business microservice responsible for orchestrating payments and saving transaction states to PostgreSQL.
 **The "Why":** By isolating the payment logic into its own service, we ensure that high CPU tasks (like encrypting payloads for Stripe) don't slow down the Identity or Notification services.
 
@@ -83,6 +82,17 @@
 * **Spring Data JPA:** Acts as an ORM (Object-Relational Mapper). It allows us to interact with the database using Java objects instead of writing raw SQL strings.
 * **`ddl-auto: update`:** A crucial property for early development. It tells Hibernate to look at our Java code and automatically create/update the PostgreSQL tables. *(Note: Turn off in production in favor of Flyway/Liquibase).*
 
+### 2. Stripe API Integration
+**The Goal:** Securely process credit card transactions over the internet without touching sensitive card data directly.
+**The "Why":** Handling raw credit card numbers requires intense legal and security compliance (PCI-DSS). By using Stripe, we only pass non-sensitive metadata (amount, currency), and Stripe handles the highly regulated banking layer.
+
+**The Transaction Flow:**
+1. **API Gateway:** Receives the POST request with JSON payment details and routes it to the Payment Service (`/api/payments/charge`).
+2. **Database (Pending):** The Payment Service saves a `PENDING` record in PostgreSQL via JPA.
+3. **Stripe API Call:** The backend uses the `stripe-java` SDK to create a `PaymentIntent`. (Note: Stripe expects all monetary amounts in cents, so $25.50 is sent as 2550).
+4. **Database (Resolution):**
+  * If Stripe succeeds, the database record is updated to `SUCCESS` and securely stores the Stripe `pi_...` Transaction ID.
+  * If the network fails or the API key is rejected, the `catch` block safely updates the database row to `FAILED`.
 ---
 
 ## 🛠️ Common Fixes & Troubleshooting Runbook
