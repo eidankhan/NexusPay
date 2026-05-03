@@ -27,7 +27,7 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
 
             // 3. Check if the header is completely missing, OR if it doesn't start with "Bearer "
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return onError(exchange, HttpStatus.UNAUTHORIZED);
+                return onError(exchange, "Missing or invalid Authorization header", HttpStatus.UNAUTHORIZED);
             }
 
             // 4. Strip the "Bearer " prefix so we just have the raw token string
@@ -38,7 +38,7 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
                 jwtUtil.validateToken(token);
             } catch (Exception e) {
                 // If it's expired or forged, drop the connection immediately
-                return onError(exchange, HttpStatus.UNAUTHORIZED);
+                return onError(exchange, "Token is expired or tampered with", HttpStatus.UNAUTHORIZED);
             }
 
             // 6. If the wristband is valid, let them pass to the Payment Service!
@@ -47,10 +47,24 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
     }
 
     // Helper method for WebFlux to instantly return a 401 response without blocking threads
-    private Mono<Void> onError(ServerWebExchange exchange, HttpStatus httpStatus) {
+    private Mono<Void> onError(ServerWebExchange exchange, String message, HttpStatus httpStatus) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(httpStatus);
-        return response.setComplete();
+        response.getHeaders().setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+
+        // Create a JSON string manually (or use an ObjectMapper if preferred)
+        String errorResponse = String.format(
+                "{\"timestamp\": \"%s\", \"status\": %d, \"error\": \"%s\", \"message\": \"%s\", \"path\": \"%s\"}",
+                java.util.Date.from(java.time.Instant.now()),
+                httpStatus.value(),
+                httpStatus.getReasonPhrase(),
+                message,
+                exchange.getRequest().getPath()
+        );
+
+        // Convert string to DataBuffer and write it to the response
+        org.springframework.core.io.buffer.DataBuffer buffer = response.bufferFactory().wrap(errorResponse.getBytes());
+        return response.writeWith(reactor.core.publisher.Mono.just(buffer));
     }
 
     public static class Config {
