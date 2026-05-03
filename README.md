@@ -119,6 +119,28 @@
   * If valid, the `JwtService` uses an HMAC-SHA algorithm and a secret key (injected via environment variables) to mint a JWT valid for 30 minutes.
   * Returns the JWT in a structured `200 OK` JSON response.
 
+### Part 2: The API Gateway Bouncer (Edge Security)
+
+**The Goal:** Intercept every incoming request to the Payment Service and verify the user's JWT "Wristband" before allowing the traffic to pass.
+
+**The "Why":** Internal microservices (like the Payment Service) should not be exposed to the public internet or forced to handle authentication logic. By moving security to the "Edge" (the Gateway), we ensure a Zero-Trust environment where only cryptographically verified requests reach our core business logic.
+
+#### The Reactive Pipeline (Netty & WebFlux)
+Unlike our other services that use Tomcat (one thread per request), the API Gateway uses **Netty**. This is a non-blocking, event-driven engine that handles thousands of concurrent requests with a tiny memory footprint.
+
+*   **ServerWebExchange:** Replaces the traditional `HttpServletRequest`. It allows us to stream request data and inspect headers asynchronously.
+*   **AbstractGatewayFilterFactory:** The base class used to build our custom `AuthenticationFilter`.
+
+#### The Authentication Flow
+1.  **Header Extraction:** The filter looks for the `Authorization` header using `.getFirst(HttpHeaders.AUTHORIZATION)`.
+2.  **Validation:** If a token is found, it strips the `Bearer ` prefix and hands the raw JWT to the `JwtUtil`.
+3.  **Cryptographic Check:** `JwtUtil` uses our shared `jwt.secret` key to verify the mathematical signature. If the token was tampered with or has expired, it throws an exception.
+4.  **The "Bounce":** If validation fails, the filter returns a `401 Unauthorized` response immediately, terminating the connection before it ever touches the Payment Service.
+5.  **The "Pass":** If valid, `chain.filter(exchange)` is called, and the request is proxied to the downstream microservice.
+
+#### Key Configuration
+*   **AuthenticationFilter:** Applied specifically to the `payment-service` route in `application.yml`.
+*   **Public Routes:** The `identity-service` routes (login/register) remain bypassable so new users can actually get their first token.
 ---
 
 ## 🛠️ Common Fixes & Troubleshooting Runbook

@@ -9,18 +9,23 @@ spring:
       server:           # <-- NEW IN SPRING BOOT 4
         webflux:        # <-- NEW IN SPRING BOOT 4
           routes:
-            # Authentication Routing
+            # Authentication Routing (Public - No Filter)
             - id: identity-service
               uri: lb://identity-service
               predicates:
                 - Path=/api/auth/**
-          # Payment Routing
+              # Route 2: Payment Service (Secured - Filter Attached!)
             - id: payment-service
               uri: lb://payment-service
               predicates:
                 - Path=/api/payments/**
+              filters:
+                - AuthenticationFilter # <-- This activates our custom Java class!
 
 eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  secret: ${JWT_SECRET_KEY}
