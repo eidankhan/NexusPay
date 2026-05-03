@@ -5,7 +5,8 @@
 2. [Phase 1: Infrastructure & Discovery](#phase-1-infrastructure--discovery)
 3. [Phase 2: Security & Routing](#phase-2-security--routing)
 4. [Phase 3: The Money Flow](#phase-3-the-money-flow)
-5. [🛠️ Common Fixes & Troubleshooting Runbook](#%EF%B8%8F-common-fixes--troubleshooting-runbook)
+5. [Phase 4: Security Lockdown & Zero Trust](#phase-4-security-lockdown--zero-trust)
+6. [🛠️ Common Fixes & Troubleshooting Runbook](#%EF%B8%8F-common-fixes--troubleshooting-runbook)
 
 ---
 
@@ -93,6 +94,31 @@
 4. **Database (Resolution):**
   * If Stripe succeeds, the database record is updated to `SUCCESS` and securely stores the Stripe `pi_...` Transaction ID.
   * If the network fails or the API key is rejected, the `catch` block safely updates the database row to `FAILED`.
+---
+
+## Phase 4: Security Lockdown & Zero Trust
+
+### Part 1: The Identity Service (The Mint)
+**The Goal:** Create a dedicated, secure microservice responsible for user registration, password hashing, and generating JSON Web Tokens (JWTs).
+**The "Why":** We are moving towards a Zero-Trust architecture. Before the API Gateway lets anyone access the core Payment Service, users must present a valid, cryptographically signed "VIP Wristband" (JWT).
+
+**Key Technologies:**
+* **Spring Security & BCrypt:** We do not use Spring Security to lock down our endpoints (the Gateway will do that later). Instead, we use its `BCryptPasswordEncoder` to securely hash user passwords before storing them in the database. Never store plain-text passwords!
+* **JJWT Library:** An industry-standard Java library used to construct, sign, and compact JSON Web Tokens securely.
+* **Java Records:** We utilized Java 14+ Records (`AuthRequest`, `AuthResponse`, `ErrorResponse`) as lightweight, immutable Data Transfer Objects (DTOs) to ensure clean, structured JSON communication.
+* **`@RestControllerAdvice`:** Implemented a Global Exception Handler to catch runtime errors (like "Invalid Credentials") and automatically map them to professional HTTP status codes (`401 Unauthorized`, `409 Conflict`) with structured JSON error bodies.
+
+**The Authentication Flow:**
+1. **Registration (`/api/auth/register`):**
+  * Accepts a username and password.
+  * Checks PostgreSQL via JPA to ensure the username is unique.
+  * Hashes the password using BCrypt and saves the `UserCredential` to the database.
+2. **Login (`/api/auth/login`):**
+  * Retrieves the user from the database.
+  * Compares the provided password against the stored BCrypt hash.
+  * If valid, the `JwtService` uses an HMAC-SHA algorithm and a secret key (injected via environment variables) to mint a JWT valid for 30 minutes.
+  * Returns the JWT in a structured `200 OK` JSON response.
+
 ---
 
 ## 🛠️ Common Fixes & Troubleshooting Runbook
