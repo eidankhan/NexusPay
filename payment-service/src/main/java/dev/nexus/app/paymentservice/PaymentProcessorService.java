@@ -21,40 +21,51 @@ public class PaymentProcessorService {
         this.paymentRepository = paymentRepository;
     }
 
-    public String processPayment(PaymentRequest request) {
+    public PaymentResponse processPayment(PaymentRequest request) {
         // 1. Create a "PENDING" record in our database
         Payment payment = new Payment(null, request.email(), request.amount(), request.currency(), "PENDING");
         payment = paymentRepository.save(payment);
 
         try {
-            // 2. Set up Stripe
             Stripe.apiKey = stripeSecretKey;
-
-            // 3. Tell Stripe to charge the card (Stripe expects amounts in cents!)
             long amountInCents = request.amount().multiply(new BigDecimal(100)).longValue();
 
             PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
                     .setAmount(amountInCents)
                     .setCurrency(request.currency())
-                    .setPaymentMethod("pm_card_visa") // <-- STRIPE'S MAGIC TEST CARD
-                    .setConfirm(true)                 // <-- TELLS STRIPE TO CHARGE IT NOW
-                    .setReturnUrl("http://localhost:8080/success") // <-- Dummy URL for redirects
+                    .setPaymentMethod("pm_card_visa")
+                    .setConfirm(true)
+                    .setReturnUrl("http://localhost:8080/success")
                     .build();
 
-            // 4. Send the request to Stripe over the internet
             PaymentIntent intent = PaymentIntent.create(params);
 
-            // 5. If Stripe says yes, update our database to SUCCESS!
-            payment.setStatus("SUCCESS - Stripe ID: " + intent.getId());
+            // 2. Success Case
+            payment.setStatus("SUCCESS");
             paymentRepository.save(payment);
 
-            return "Payment Successful! Receipt sent to " + request.email();
+            return new PaymentResponse(
+                    "SUCCESS",
+                    "Payment processed successfully",
+                    intent.getId(),
+                    payment.getId(),
+                    request.amount(),
+                    request.currency()
+            );
 
         } catch (Exception e) {
-            // 6. If Stripe fails (or the network drops), update our database to FAILED
+            // 3. Failure Case
             payment.setStatus("FAILED");
             paymentRepository.save(payment);
-            return "Payment Failed: " + e.getMessage();
+
+            return new PaymentResponse(
+                    "FAILED",
+                    "Payment failed: " + e.getMessage(),
+                    null,
+                    payment.getId(),
+                    request.amount(),
+                    request.currency()
+            );
         }
     }
 }
