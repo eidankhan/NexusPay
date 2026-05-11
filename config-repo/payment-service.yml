@@ -18,6 +18,12 @@ spring:
       ddl-auto: update # Tells Spring to automatically create database tables for us!
     show-sql: true     # Prints the SQL queries in your terminal so you can learn how it works
 
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
 eureka:
   client:
     service-url:
