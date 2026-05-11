@@ -12,8 +12,8 @@ spring:
     config:
       server:
         native:
-          search-locations: classpath:/config/
-
+          # Tells Spring to look in the folder at the root of the project
+          search-locations: file:./config-repo/
 eureka:
   client:
     service-url:
