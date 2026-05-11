@@ -1,31 +1,5 @@
-server:
-  port: 8080
-
 spring:
   application:
-    name: api-gateway
-  cloud:
-    gateway:
-      server:           # <-- NEW IN SPRING BOOT 4
-        webflux:        # <-- NEW IN SPRING BOOT 4
-          routes:
-            # Authentication Routing (Public - No Filter)
-            - id: identity-service
-              uri: lb://identity-service
-              predicates:
-                - Path=/api/auth/**
-              # Route 2: Payment Service (Secured - Filter Attached!)
-            - id: payment-service
-              uri: lb://payment-service
-              predicates:
-                - Path=/api/payments/**
-              filters:
-                - AuthenticationFilter # <-- This activates our custom Java class!
-
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-
-jwt:
-  secret: ${JWT_SECRET_KEY}
+    name: gateway-service # CRITICAL: This must match the .yml filename in the Config Server
+  config:
+    import: "optional:configserver:http://localhost:8888"

@@ -1,27 +1,5 @@
-server:
-  port: 8081  # The Identity Service lives on port 8081
-
 spring:
   application:
-    name: identity-service
-
-  # Database Connection Settings
-  datasource:
-    url: jdbc:postgresql://localhost:5432/nexuspay
-    username: admin
-    password: password
-    driver-class-name: org.postgresql.Driver
-
-  # JPA (Database tool) Settings
-  jpa:
-    hibernate:
-      ddl-auto: update # Tells Spring to automatically create database tables for us!
-    show-sql: true     # Prints the SQL queries in your terminal so you can learn how it works
-
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-
-jwt:
-  secret: ${JWT_SECRET_KEY}
+    name: identity-service # CRITICAL: This must match the .yml filename in the Config Server
+  config:
+    import: "optional:configserver:http://localhost:8888"

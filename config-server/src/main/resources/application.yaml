@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: config-server
+  config:
+    import: "optional:configserver:http://localhost:8888"
   profiles:
     active: native  # 'native' means we will read files from our local folder, not from GitHub (to keep it simple for now!)
   cloud:

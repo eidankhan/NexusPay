@@ -5,7 +5,7 @@
 2. [Phase 1: Infrastructure & Discovery](#phase-1-infrastructure--discovery)
 3. [Phase 2: Security & Routing](#phase-2-security--routing)
 4. [Phase 3: The Money Flow](#phase-3-the-money-flow)
-5. [Phase 4: Security Lockdown & Zero Trust](#phase-4-security-lockdown--zero-trust)
+5. [Phase 4: Security Lockdown, Zero Trust & Central Config](#phase-4-security-lockdown--zero-trust)
 6. [🛠️ Common Fixes & Troubleshooting Runbook](#%EF%B8%8F-common-fixes--troubleshooting-runbook)
 
 ---
@@ -96,7 +96,7 @@
   * If the network fails or the API key is rejected, the `catch` block safely updates the database row to `FAILED`.
 ---
 
-## Phase 4: Security Lockdown & Zero Trust
+## Phase 4: Security Lockdown, Zero Trust & Central Config
 
 ### Part 1: The Identity Service (The Mint)
 **The Goal:** Create a dedicated, secure microservice responsible for user registration, password hashing, and generating JSON Web Tokens (JWTs).
@@ -141,6 +141,19 @@ Unlike our other services that use Tomcat (one thread per request), the API Gate
 #### Key Configuration
 *   **AuthenticationFilter:** Applied specifically to the `payment-service` route in `application.yml`.
 *   **Public Routes:** The `identity-service` routes (login/register) remain bypassable so new users can actually get their first token.
+
+### Part 3: Centralized Configuration (The Brain)
+**The Goal:** Decouple environment-specific settings (database URLs, ports, Stripe keys) from the individual microservice source code and manage them in a central location.
+**The "Why":** Adheres to the "12-Factor App" methodology. It prevents hardcoding secrets into individual services and allows the fleet to dynamically pull configuration on startup.
+
+**The "Handshake" Flow:**
+1. **Config Server Boots:** Uses `@EnableConfigServer` and reads configuration files (e.g., `gateway-service.yml`, `payment-service.yml`) from its local classpath (`src/main/resources/config/`).
+2. **Microservice Boots:** A client service (like the Gateway) starts up with a completely hollowed-out local `application.yml` containing only its name and a pointer to the Config Server.
+3. **The Import:** The client uses `spring.config.import: "optional:configserver:http://localhost:8888"` to call the Config Server.
+4. **Configuration Applied:** The Config Server returns the exact settings for that service in JSON format, which the client service dynamically applies to its environment.
+
+#### Key Rule: **Eureka (The Phonebook) and the Config Server (The Brain) eep their own properties locally so they can bootstrap the environment. All other microservices pull their settings dynamically.**
+
 ---
 
 ## 🛠️ Common Fixes & Troubleshooting Runbook
@@ -164,3 +177,27 @@ Unlike our other services that use Tomcat (one thread per request), the API Gate
 ### 🚨 Gotcha: 404 on Direct Service Hit
 * **The Cause:** Controller is in the wrong folder.
 * **The Fix:** Spring Boot only scans for `@RestController` classes if they are in the exact same folder (or a sub-folder) as the main `@SpringBootApplication` class. Move the file into the correct package.
+
+### 🚨 Error: Config Server Returns 404 (Whitelabel Error Page)
+* **The Error:** Hitting `http://localhost:8888/gateway-service/default` returns a Whitelabel 404.
+* **The Cause:** The `@EnableConfigServer` annotation is missing from the main class, or the server cannot find the specified `native` search location.
+* **The Fix:** Ensure `@EnableConfigServer` is present in your main application class and verify the `search-locations` path matches exactly (e.g., `classpath:/config/`).
+
+### ⚠️ Gotcha: Config Server Properties Are "Invisible" or Stale
+* **The Problem:** You added a new `payment-service.yml` to the Config Server, but it won't show up in the browser, and the Payment Service crashes without its properties.
+* **The Cause:** When using the `classpath:/config/` approach, the Config Server only sees the files that were compiled into the `target/classes` folder during the last build.
+* **The Fix:** Stop the Config Server, run `mvn clean install` on the `config-server` module to move the newly created YAML files into the target directory, and restart it.
+
+### ⚠️ Gotcha: "Empty Nest" Client Service Failure
+* **The Problem:** After hollowing out a service's `application.yml` (like the Gateway or Payment service), it starts up on the default port `8080` with zero properties and missing routes.
+* **The Cause:** The microservice either lacks the `spring-cloud-starter-config` dependency to perform the handshake, or its local `application.yml` is missing the import instructions.
+* **The Fix:**
+  1. Add the `spring-cloud-starter-config` dependency to the microservice's `pom.xml`.
+  2. Ensure the local `application.yml` looks exactly like this:
+     ```yaml
+     spring:
+       application:
+         name: [service-name] # Must match the filename in the config server
+       config:
+         import: "optional:configserver:http://localhost:8888"
+     ```
