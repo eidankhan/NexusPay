@@ -23,3 +23,16 @@ services:
     container_name: nexus-zipkin
     ports:
       - "9411:9411"
+
+    # Our Message Broker (The "Post Office")
+  nexus-mq:
+    image: rabbitmq:3-management
+    container_name: nexus-mq
+    ports:
+      - "5672:5672"   # AMQP protocol (Services use this)
+      - "15672:15672" # Management UI (You use this in the browser)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    # Ensures RabbitMQ stays alive and restarts if the computer reboots
+    restart: always

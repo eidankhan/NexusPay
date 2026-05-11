@@ -3,6 +3,7 @@ package dev.nexus.app.paymentservice;
 import com.stripe.Stripe;
 import com.stripe.model.PaymentIntent;
 import com.stripe.param.PaymentIntentCreateParams;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
@@ -11,14 +12,16 @@ import java.math.BigDecimal;
 public class PaymentProcessorService {
 
     private final PaymentRepository paymentRepository;
+    private final RabbitTemplate rabbitTemplate;
 
     // We pull the secret key right out of our application.yml!
     @Value("${stripe.secret-key}")
     private String stripeSecretKey;
 
     // Constructor Injection (Spring automatically gives us the Database tool)
-    public PaymentProcessorService(PaymentRepository paymentRepository) {
+    public PaymentProcessorService(PaymentRepository paymentRepository, RabbitTemplate rabbitTemplate) {
         this.paymentRepository = paymentRepository;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     public PaymentResponse processPayment(PaymentRequest request) {
@@ -44,6 +47,9 @@ public class PaymentProcessorService {
             payment.setStatus("SUCCESS");
             paymentRepository.save(payment);
 
+            // Publish Success Event
+            publishEvent(intent.getId(), request, "SUCCESS", RabbitMQConfig.SUCCESS_ROUTING_KEY);
+
             return new PaymentResponse(
                     "SUCCESS",
                     "Payment processed successfully",
@@ -58,6 +64,10 @@ public class PaymentProcessorService {
             payment.setStatus("FAILED");
             paymentRepository.save(payment);
 
+            // Publish Failure Event
+            // We use "N/A" or null for intentId because Stripe didn't generate one
+            publishEvent("N/A", request, "FAILED", RabbitMQConfig.FAILED_ROUTING_KEY);
+
             return new PaymentResponse(
                     "FAILED",
                     "Payment failed: " + e.getMessage(),
@@ -67,5 +77,18 @@ public class PaymentProcessorService {
                     request.currency()
             );
         }
+    }
+
+    // Private helper to keep the main logic clean
+    private void publishEvent(String txnId, PaymentRequest req, String status, String routingKey) {
+        PaymentEvent event = new PaymentEvent(
+                txnId,
+                req.email(),
+                req.amount(),
+                req.currency(),
+                status
+        );
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE, routingKey, event);
+        System.out.println("📢 [Payment Service] " + status + " event sent for: " + req.email());
     }
 }

@@ -5,7 +5,8 @@
 2. [Phase 1: Infrastructure & Discovery](#phase-1-infrastructure--discovery)
 3. [Phase 2: Security & Routing](#phase-2-security--routing)
 4. [Phase 3: The Money Flow](#phase-3-the-money-flow)
-5. [Phase 4: Security Lockdown, Zero Trust & Central Config](#phase-4-security-lockdown--zero-trust)
+5. [Phase 4: Security Lockdown, Zero Trust & Central Config](#phase-4-security-lockdown-zero-trust--central-config)
+6. [Phase 5: Event-Driven Architecture (RabbitMQ)](#phase-5-event-driven-architecture-rabbitmq)
 6. [🛠️ Common Fixes & Troubleshooting Runbook](#%EF%B8%8F-common-fixes--troubleshooting-runbook)
 
 ---
@@ -154,6 +155,81 @@ Unlike our other services that use Tomcat (one thread per request), the API Gate
 
 #### Key Rule: **Eureka (The Phonebook) and the Config Server (The Brain) eep their own properties locally so they can bootstrap the environment. All other microservices pull their settings dynamically.**
 
+---
+
+## Phase 5: Event-Driven Architecture (RabbitMQ)
+
+### 1. Theoretical Overview
+
+#### The Problem: 
+In a traditional synchronous REST architecture, if the Payment Service needs to send an email, it must wait for the Email API to respond. If the Email API is slow or offline, the Payment Service hangs, potentially causing the checkout process to fail for the user. Furthermore, tightly coupling services prevents independent scaling.
+
+#### The Solution: Event-Driven Architecture (EDA)
+We transitioned NexusPay to an Event-Driven Architecture using **RabbitMQ** as our Message Broker.
+* **Decoupling:** The Payment Service no longer knows or cares about the Notification Service. It simply announces, "A payment happened!" and moves on.
+* **Fault Tolerance:** If the Notification Service is offline, RabbitMQ safely stores the event in a **Durable Queue** on disk. When the service comes back online, it consumes the backlog without any data loss.
+* **Scalability:** We can spin up multiple instances of the Notification Service to consume messages concurrently during high traffic.
+
+#### The Event-Driven Glossary (RabbitMQ)
+
+In RabbitMQ (and event-driven architecture in general), there is a very specific flow to how a message travels. Let's break down the core terminologies in order of a message's journey.
+
+#### 1. The Actors
+*   **Producer (Publisher):** The application that creates and sends the message. In our case, this is the `Payment Service`. It does not know who will receive the message; it only knows how to send it.
+*   **Consumer (Subscriber):** The application that waits for and processes the message. In our case, this is the `Notification Service`.
+
+#### 2. The Network Layer
+*   **Connection:** A physical, heavy TCP connection between your application (like Spring Boot) and the RabbitMQ server. Because opening TCP connections is slow and resource-intensive, we only open one.
+*   **Channel:** A lightweight, "virtual" connection inside the main TCP connection. Think of the TCP Connection as a massive fiber-optic cable, and Channels as the individual strands of glass inside it. All publishing and consuming happen over Channels.
+
+#### 3. The Routing System (The Post Office)
+*   **Message (Event):** The actual data being sent. It consists of a **Payload** (your JSON, like `PaymentEvent`) and **Headers/Properties** (metadata like timestamps, message IDs, or delivery mode).
+*   **Exchange:** The sorting office. Producers never send messages directly to a queue. They send them to an Exchange. The Exchange's only job is to look at the message and decide which queue(s) should get a copy.
+    *   *Types of Exchanges:*
+        *   **Fanout:** The "Loudspeaker." Clones the message and sends it to every queue it knows about.
+        *   **Direct:** The "Courier." Sends the message to a queue that perfectly matches a specific keyword.
+        *   **Topic:** The "Smart Router." Uses pattern matching (like `payment.*`) to route messages to multiple relevant queues. (This is what NexusPay uses).
+*   **Routing Key:** The "Address" or "Zip Code" written on the message by the Producer. (e.g., `payment.success`). The Exchange reads this key to figure out where the message goes.
+*   **Binding:** The "Rule" that connects a Queue to an Exchange. It tells the Exchange: *"If you see a message with the routing key `payment.success`, please put a copy of it in my queue."*
+
+#### 4. The Destination
+*   **Queue:** The mailbox. It is a physical buffer inside RabbitMQ that stores messages in a First-In-First-Out (FIFO) order until a Consumer is ready to process them.
+*   **Acknowledgment (ACK):** A signal sent from the Consumer back to RabbitMQ saying, *"I have successfully processed this message, you can now permanently delete it from the queue."* If the Consumer crashes before sending the ACK, RabbitMQ will put the message back in the queue (Requeue) for someone else to try.
+
+> **💡 The Analogy to Remember:**
+> You (**Producer**) write a letter (**Message**) and put a Zip Code on it (**Routing Key**). You drop it in a blue mailbox which travels to the regional sorting facility (**Exchange**). The sorting facility uses a map (**Bindings**) to look at the Zip Code and put the letter onto the correct delivery truck. The truck drops it into the exact metal mailbox (**Queue**) at the destination. The homeowner (**Consumer**) takes the letter, reads it, and throws it away (**ACK**).
+
+#### Core RabbitMQ Concepts Implemented
+* **Producer:** `Payment Service` (Generates the `PaymentEvent`).
+* **Consumer:** `Notification Service` (Listens for the event).
+* **Topic Exchange:** (`payment_exchange`) Acts as the smart router. It looks at the "Routing Key" of an incoming message and decides which queue it belongs in.
+* **Routing Keys:**
+    * `payment.success`: Routes to the Success Queue.
+    * `payment.failed`: Routes to the Failed Queue.
+* **Durability:** Queues are configured as durable (survive broker restarts) and messages are persistent.
+
+### 2. Technical Implementation
+
+#### Infrastructure
+RabbitMQ was deployed via our existing `docker-compose.yml` using the official `rabbitmq:3-management` image, exposing port `5672` for AMQP traffic and `15672` for the Management UI.
+
+#### The Publisher (`payment-service`)
+1. **Dependencies:** Added `spring-boot-starter-amqp`.
+2. **Configuration (`RabbitMQConfig.java`):**
+    * Defined the `TopicExchange`.
+    * Defined two durable Queues (`payment_success_queue`, `payment_failed_queue`).
+    * Bound the queues to the exchange using specific routing keys.
+    * Registered `JacksonJsonMessageConverter` to serialize Java Records into JSON.
+3. **Execution:**
+    * Updated `processPayment()` to use `RabbitTemplate.convertAndSend()`.
+    * Messages are published asynchronously within the `try/catch` block handling Stripe API calls.
+
+#### The Consumer (`notification-service`)
+1. **New Module:** Created a standalone Spring Boot module to ensure Single Responsibility.
+2. **Configuration:** Connected to Eureka and the Central Config Server. Registered the `JacksonJsonMessageConverter` for deserialization.
+3. **Execution (`NotificationListener.java`):**
+    * Utilized the `@RabbitListener` annotation to bind methods directly to specific queues.
+    * Implemented separate handlers for `payment_success_queue` and `payment_failed_queue`.
 ---
 
 ## 🛠️ Common Fixes & Troubleshooting Runbook
